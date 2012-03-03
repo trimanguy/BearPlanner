@@ -1,0 +1,13 @@
+# Read about fixtures at http://api.rubyonrails.org/classes/ActiveRecord/Fixtures.html
+
+one:
+  ename: MyString
+  starttime: 2012-03-01 04:17:35
+  endtime: 2012-03-01 04:17:35
+  user: 
+
+two:
+  ename: MyString
+  starttime: 2012-03-01 04:17:35
+  endtime: 2012-03-01 04:17:35
+  user: 

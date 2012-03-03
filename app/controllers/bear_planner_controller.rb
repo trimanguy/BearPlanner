@@ -1,0 +1,298 @@
+class BearPlannerController < ApplicationController
+  #The next three lines require that some method in "application_controller.rb" 
+  # be run before certain methods start
+  before_filter :login_required, :except => [:signup, :home, :login]
+  before_filter :cal_id_matches_user, :except =>[:create_calendar, :signup, :home, :login, :logout, :show_calendars, :show_invites, :show_invite]
+  before_filter :invite_id_matches_user, :only=>[:show_invite]
+  
+  def home
+  end
+
+  def signup
+    #Attempts to create a new user
+    user = User.new do |u| 
+      u.name = params[:username]
+      u.password = params[:password]
+    end #creates a new instance of the user model
+    if request.post? #checks if the user clicked the "submit" button on the form
+      if user.save #if they have submitted the form attempts to save the user
+        session[:uid] = user.id #Logs in the new user automatically
+        redirect_to :action => "show_calendars" #Goes to their new calendars page
+      else #This will happen if one of the validations define in /app/models/user.rb fail for this instance.
+        redirect_to :action => "signup", :notice=>"An error has occurred." #Ask them to sign up again
+      end
+    end
+  end
+
+  def login
+    if request.post? #If the form was submitted
+      user = User.find(:first, :conditions=>['name=?',(params[:username])]) #Find the user based on the name submitted
+      if !user.nil? && user.password==params[:password] #Check that this user exists and it's password matches the inputted password
+        session[:uid] = user.id #If so log in the user
+        redirect_to :action => "show_calendars" #And redirect to their calendars
+      else
+        redirect_to :action => "login", :notice=> "Invalid username or password. Please try again." #Otherwise ask them to try again. 
+      end
+    end
+  end
+
+  def logout
+    session[:uid] = nil #Logs out the user
+    redirect_to :action => "home" #redirect to the homepage
+  end
+
+  def show_calendars
+    @calendarArray = []
+    uid = session[:uid]
+    user = User.find_by_id(uid)
+    cals = user.calendars
+    cals.each do |cal|
+      modified = {}
+      modified["id"] = cal.id
+      modified["name"] = cal.cname
+      modified["description"] = cal.cdescription
+      @calendarArray.push(modified)
+    end
+  end
+
+  def show_calendar
+    cid=params[:cal_id]
+    cal=Calendar.find_by_id(cid)
+    @calName=cal.cname
+    @calDescription=cal.cdescription
+    @eventArray = []
+    evnts = cal.events
+    evnts.each do |evnt|
+      modified = {}
+      modified["id"] = evnt.id
+      modified["name"] = evnt.ename
+      modified["starts_at"] = evnt.starttime
+      modified["ends_at"] = evnt.endtime
+      @eventArray.push(modified)
+    end
+  end
+
+  def edit_event
+    curr_cid=params[:cal_id]
+    eid = params[:event_id]
+    evnt = Event.find_by_id(eid)
+    user=User.find_by_id(session[:uid])
+    cals = user.calendars
+    @calendars = {}
+    cals.each do |cal|
+      @calendars[cal.cname] = cal.id
+    end
+    @eventName = evnt.ename
+    @eventId = eid
+    @eventStarts = evnt.starttime
+    @eventEnds = evnt.endtime
+    owner_name = evnt.user.name
+    @eventOwner = evnt.user.id
+    if session[:uid] == evnt.user.id
+      @invitees = []
+      invts = evnt.invites
+      invts.each do |invt|
+        if !invt.response.nil? && invt.response == "accepted"
+          guests = {}
+          invited = User.find_by_id(invt.user_id)
+          guests["name"] = invited.name
+          @invitees.push(guests)
+        end
+      end
+    else #if user is not owner
+      if params[:notice].nil?
+        redirect_to :action=>'edit_event', :notice=>'You can not edit this event, contact owner: ' << "#{owner_name}", :cal_id=>curr_cid, :event_id=>eid
+      end
+    end
+      
+    if request.post?
+      old_cid = params[:old_cal_id]
+      new_cid = params[:cal_id]
+      updated_event = evnt.update_attributes({:ename=>params[:eventName], :starttime=>DateTime.parse(params[:starts_at]), :endtime=>DateTime.parse(params[:ends_at]), :user_id=>session[:uid]})
+      if updated_event
+        invitees_all_correct=true
+        inviteeArray = params[:invitees].split(',')
+        wrong_invitees = ""
+        inviteeArray.each do |invitee|
+          invitee_user = User.find_by_name(invitee)
+          if invitee_user.nil? #if we cant find invitee in user table
+            invitees_all_correct=false
+            wrong_invitees << "#{invitee} "
+          else #if we found invitee in user table 
+            if invitee_user.invites.empty? || (invitee != user.name && !evnt.invites.exist?(invitee_user.id)) # if user has no invites or user is not owner and not invited yet
+              new_event_invite = evnt.invites.create(:imessage=>params[:inviteMessage], :event_id=>eid, :user_id=>invitee_user.id)
+              new_event_invite.event = new_event
+              new_event_invite.user = invitee_user
+            else #if user is already invited
+              invitees_all_correct=false
+              wrong_invitees << "#{invitee} "
+            end
+          end
+        end
+        if invitees_all_correct #there was no problems with any invitee
+          redirect_to :action=>'show_calendar', :cal_id=>new_cid
+        else #if someone had a problem
+          wrong_invitees.strip
+          redirect_to :action=>'show_calendar', :cal_id=>new_cid, :notice=> 'The following invited usernames are invalid/duplicates and invites were not sent: ' << wrong_invitees
+        end
+      else
+        redirect_to :action => 'edit_calendar', :cal_id => old_cid, :notice => 'An error has occurred.'
+      end
+    end
+  end
+  
+  def create_calendar
+    if request.post?
+      usr = User.find_by_id(session[:uid])
+      new_calendar = usr.calendars.create(:cname => params[:calName], :cdescription => params[:calDescription], :user_id => session[:uid])
+      if new_calendar.valid?
+        redirect_to :action => 'show_calendars', :cal_id => new_calendar.id
+      else
+        redirect_to :action => "create_calendar", :notice=>"An error has occurred."
+      end
+    end
+  end
+
+  def edit_calendar
+    cid=params[:cal_id]
+    cal=Calendar.find_by_id(cid)
+    @calName = cal.cname
+    @calDescription= cal.cdescription
+    if request.post?
+      updated = cal.update_attributes({:cname => params[:calName], :cdescription => params[:calDescription]})
+      if updated
+        redirect_to :action => 'show_calendar', :cal_id => cid
+      else
+        redirect_to :action => 'edit_calendar', :cal_id => cid, :notice => 'An error has occurred.'
+      end
+    end
+  end
+
+  def delete_calendar
+    cid=params[:cal_id]
+    cal = Calendar.find_by_id(cid)
+    if cal.events.empty?
+      Calendar.destroy(cid)
+      redirect_to :action=> 'show_calendars'
+    else
+      redirect_to :action=>'show_calendar', :notice=>'You can not delete a calendar that contains any events.', :cal_id=>cid
+    end
+  end
+
+  def create_event
+    curr_cid = params[:cal_id]
+    #sets up @calendars
+    user=User.find_by_id(session[:uid])
+    cals = user.calendars
+    h = {}
+    cals.each do |cal|
+      h[cal.cname] = cal.id
+    end
+    @calendars = h
+    invitees_all_correct=true
+    already_invited = []
+    
+    if request.post?
+      new_cid = params[:cal_id]
+      calndar = Calendar.find_by_id(new_cid)
+      new_event = calndar.events.create(:ename=>params[:eventName], :starttime=>DateTime.parse(params[:starts_at]), :endtime=>DateTime.parse(params[:ends_at]), :user_id=>session[:uid]) 
+      inviteeArray = params[:invitees].split(',')
+      wrong_invitees = ""
+      if new_event.valid? #if all goes well in saving
+        new_event.user = user
+        eid = new_event.id #get the eid of created event
+        inviteeArray.each do |invitee|
+          invitee_user = User.find_by_name(invitee)
+          if invitee_user.nil? #if we cant find invitee in user table
+            invitees_all_correct=false
+            wrong_invitees << "#{invitee} "
+          else #if we found invitee in user table 
+            if invitee_user.invites.empty? || (invitee != user.name && !already_invited.include?(invitee)) # if user has no invites or user is not owner and not invited yet
+              new_event_invite = new_event.invites.create(:imessage=>params[:inviteMessage], :event_id=>eid, :user_id=>invitee_user.id)
+              new_event_invite.event = new_event
+              new_event_invite.user = invitee_user
+              already_invited.push(invitee)
+            else #if user is already invited
+              invitees_all_correct=false
+              wrong_invitees << "#{invitee} "
+            end
+          end
+        end
+        if invitees_all_correct #there was no problems with any invitee
+          redirect_to :action=>'show_calendar', :cal_id=>new_cid
+        else #if someone had a problem
+          wrong_invitees.strip
+          redirect_to :action=>'show_calendar', :cal_id=>new_cid, :notice=> 'The following invited usernames are invalid/duplicates and invites were not sent: ' << wrong_invitees
+        end
+      else #if something breaks during saving
+        redirect_to :action=>'create_event', :notice=>'An error has occurred.', :cal_id=>curr_cid
+      end
+    end
+  end
+
+  def delete_event
+    cid=params[:cal_id]
+    eid=params[:event_id]
+    evnt = Event.find_by_id(eid)
+    if evnt.user.id == session[:uid]
+      Event.destroy(evnt)
+    else
+      cal = Calendar.find_by_id(cid)
+      if cal.events.exists?(evnt)
+        cal.destroy(evnt)
+      end
+    end
+    redirect_to :action=>'show_calendar',  :cal_id=>cid
+  end
+
+  def show_invites
+    @allInvitees = []
+    uid = session[:uid]
+    user = User.find_by_id(uid)
+    invts = user.invites
+    invts.each do |invt|
+      modified = {}
+      modified['inviteId'] = invt.id
+      modified["eventName"] = invt.event.ename
+      @allInvitees.push(modified)
+    end
+  end
+
+  def show_invite
+    iid=params[:invite_id]
+    invt=Invite.find_by_id(iid)
+    @inviteMessage= invt.imessage
+    @inviteId = iid
+    @eventName = invt.event.ename
+    @eventStarts = invt.event.starttime
+    @eventEnds = invt.event.endtime
+    @eventUserName = invt.event.user.name
+    cals = invt.user.calendars
+    h = {}
+    cals.each do |cal|
+      h[cal.cname] = cal.id
+    end
+    @calendars = h
+    if request.post?
+      dest_cal = params[:cal_id]
+      response = params[:commit]
+      if response == "Accept" || response == "Reject"
+        if response == "Accept"
+          updated = invt.update_attributes({:imessage=>invt.imessage, :user_id=>invt.user_id, :response=>"accepted"})
+        else
+          updated = invt.update_attributes({:imessage=>invt.imessage, :user_id=>invt.user_id, :response=>"accepted"})
+        end
+        if updated
+          user = User.find_by_id(session[:uid])
+          user.invites.delete(invt)
+          calndar = user.calendars.find(dest_cal)
+          calndar.events << invt.event
+          redirect_to :action=>'show_invites'
+        end
+      else
+        redirect_to :action=>'show_invite', :notice=>'An error has occurred.'
+      end
+    end
+  end
+
+end
