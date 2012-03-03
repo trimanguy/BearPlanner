@@ -293,7 +293,7 @@ class BearPlannerController < ApplicationController
           redirect_to :action=>'show_invites'
         end
       else
-        redirect_to :action=>'show_invite', :notice=>'An error has occurred.', :invite_id=>
+        redirect_to :action=>'show_invite', :notice=>'An error has occurred.', :invite_id=>iid
       end
     end
   end

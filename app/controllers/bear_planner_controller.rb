@@ -119,7 +119,7 @@ class BearPlannerController < ApplicationController
             invitees_all_correct=false
             wrong_invitees << "#{invitee} "
           else #if we found invitee in user table 
-            if invitee_user.invites.empty? || (invitee != user.name && !evnt.invites.exists?(invitee_user.id)) # if user has no invites or user is not owner and not invited yet
+            if (invitee != user.name && !evnt.invites.exists?(invitee_user.id) || invitee_user.invites.empty? # if user has no invites or user is not owner and not invited yet
               new_event_invite = evnt.invites.create(:imessage=>params[:inviteMessage], :event_id=>eid, :user_id=>invitee_user.id, :response=>"no reply")
               new_event_invite.event = evnt
               new_event_invite.user = invitee_user
