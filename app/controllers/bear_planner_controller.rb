@@ -251,7 +251,7 @@ class BearPlannerController < ApplicationController
     user = User.find_by_id(uid)
     invts = user.invites
     invts.each do |invt|
-      if invt.response != "accepted"
+      if invt.response != "no reply"
         modified = {}
         modified['inviteId'] = invt.id
         modified["eventName"] = invt.event.ename
@@ -285,9 +285,11 @@ class BearPlannerController < ApplicationController
           updated = invt.update_attribute(:response, "rejected")
         end
         if updated
-          user = User.find_by_id(session[:uid])
-          calndar = user.calendars.find(dest_cal)
-          calndar.events << invt.event
+          if response == "Accept"
+            user = User.find_by_id(session[:uid])
+            calndar = user.calendars.find(dest_cal)
+            calndar.events << invt.event
+          end
           redirect_to :action=>'show_invites'
         end
       else
