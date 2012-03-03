@@ -91,11 +91,11 @@ class BearPlannerController < ApplicationController
     if session[:uid] == evnt.user.id
       @invitees = []
       invts = evnt.invites
+      @invitees.push({"name"=>owner_name})
       invts.each do |invt|
-        if !invt.response.nil? && invt.response == "accepted"
+        if invt.response == "accepted"
           guests = {}
-          invited = User.find_by_id(invt.user_id)
-          guests["name"] = invited.name
+          guests["name"] = invt.user.name
           @invitees.push(guests)
         end
       end
@@ -119,9 +119,9 @@ class BearPlannerController < ApplicationController
             invitees_all_correct=false
             wrong_invitees << "#{invitee} "
           else #if we found invitee in user table 
-            if invitee_user.invites.empty? || (invitee != user.name && !evnt.invites.exist?(invitee_user.id)) # if user has no invites or user is not owner and not invited yet
-              new_event_invite = evnt.invites.create(:imessage=>params[:inviteMessage], :event_id=>eid, :user_id=>invitee_user.id)
-              new_event_invite.event = new_event
+            if invitee_user.invites.empty? || (invitee != user.name && !evnt.invites.exists?(invitee_user.id)) # if user has no invites or user is not owner and not invited yet
+              new_event_invite = evnt.invites.create(:imessage=>params[:inviteMessage], :event_id=>eid, :user_id=>invitee_user.id, :response=>"no reply")
+              new_event_invite.event = evnt
               new_event_invite.user = invitee_user
             else #if user is already invited
               invitees_all_correct=false
@@ -207,8 +207,8 @@ class BearPlannerController < ApplicationController
             invitees_all_correct=false
             wrong_invitees << "#{invitee} "
           else #if we found invitee in user table 
-            if invitee_user.invites.empty? || (invitee != user.name && !already_invited.include?(invitee)) # if user has no invites or user is not owner and not invited yet
-              new_event_invite = new_event.invites.create(:imessage=>params[:inviteMessage], :event_id=>eid, :user_id=>invitee_user.id)
+            if (invitee != user.name && !already_invited.include?(invitee)) || invitee_user.invites.empty? # if user is not owner and not invited yet or user has no invites
+              new_event_invite = new_event.invites.create(:imessage=>params[:inviteMessage], :event_id=>eid, :user_id=>invitee_user.id, :response=>"no reply")
               new_event_invite.event = new_event
               new_event_invite.user = invitee_user
               already_invited.push(invitee)
@@ -251,10 +251,12 @@ class BearPlannerController < ApplicationController
     user = User.find_by_id(uid)
     invts = user.invites
     invts.each do |invt|
-      modified = {}
-      modified['inviteId'] = invt.id
-      modified["eventName"] = invt.event.ename
-      @allInvitees.push(modified)
+      if invt.response != "accepted"
+        modified = {}
+        modified['inviteId'] = invt.id
+        modified["eventName"] = invt.event.ename
+        @allInvitees.push(modified)
+      end
     end
   end
 
@@ -278,13 +280,12 @@ class BearPlannerController < ApplicationController
       response = params[:commit]
       if response == "Accept" || response == "Reject"
         if response == "Accept"
-          updated = invt.update_attributes({:imessage=>invt.imessage, :user_id=>invt.user_id, :response=>"accepted"})
+          updated = invt.update_attribute(:response, "accepted")
         else
-          updated = invt.update_attributes({:imessage=>invt.imessage, :user_id=>invt.user_id, :response=>"accepted"})
+          updated = invt.update_attribute(:response, "rejected")
         end
         if updated
           user = User.find_by_id(session[:uid])
-          user.invites.delete(invt)
           calndar = user.calendars.find(dest_cal)
           calndar.events << invt.event
           redirect_to :action=>'show_invites'
