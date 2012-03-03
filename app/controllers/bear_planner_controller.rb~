@@ -119,7 +119,7 @@ class BearPlannerController < ApplicationController
             invitees_all_correct=false
             wrong_invitees << "#{invitee} "
           else #if we found invitee in user table 
-            if invitee_user.invites.empty? || (invitee != user.name && !evnt.invites.exists?(invitee_user.id)) # if user has no invites or user is not owner and not invited yet
+            if invitee != user.name && (!evnt.invites.exists?(invitee_user.id) || invitee_user.invites.empty?) # if user has no invites or user is not owner and not invited yet
               new_event_invite = evnt.invites.create(:imessage=>params[:inviteMessage], :event_id=>eid, :user_id=>invitee_user.id, :response=>"no reply")
               new_event_invite.event = evnt
               new_event_invite.user = invitee_user
@@ -207,7 +207,7 @@ class BearPlannerController < ApplicationController
             invitees_all_correct=false
             wrong_invitees << "#{invitee} "
           else #if we found invitee in user table 
-            if (invitee != user.name && !already_invited.include?(invitee)) || invitee_user.invites.empty? # if user is not owner and not invited yet or user has no invites
+            if invitee != user.name && (!already_invited.include?(invitee) || invitee_user.invites.empty?) # if user is not owner and not invited yet or user has no invites
               new_event_invite = new_event.invites.create(:imessage=>params[:inviteMessage], :event_id=>eid, :user_id=>invitee_user.id, :response=>"no reply")
               new_event_invite.event = new_event
               new_event_invite.user = invitee_user
@@ -278,7 +278,7 @@ class BearPlannerController < ApplicationController
     if request.post?
       dest_cal = params[:cal_id]
       response = params[:commit]
-      if !dest_cal.nil? && (response == "Accept" || response == "Reject")
+      if (!dest_cal.nil? && response == "Accept") || response == "Reject"
         if response == "Accept"
           updated = invt.update_attribute(:response, "accepted")
         else
