@@ -239,7 +239,7 @@ class BearPlannerController < ApplicationController
     else
       cal = Calendar.find_by_id(cid)
       if cal.events.exists?(evnt)
-        cal.destroy(evnt)
+        cal.events.delete(evnt)
       end
     end
     redirect_to :action=>'show_calendar',  :cal_id=>cid
@@ -251,7 +251,7 @@ class BearPlannerController < ApplicationController
     user = User.find_by_id(uid)
     invts = user.invites
     invts.each do |invt|
-      if invt.response != "no reply"
+      if invt.response == "no reply"
         modified = {}
         modified['inviteId'] = invt.id
         modified["eventName"] = invt.event.ename
@@ -278,7 +278,7 @@ class BearPlannerController < ApplicationController
     if request.post?
       dest_cal = params[:cal_id]
       response = params[:commit]
-      if response == "Accept" || response == "Reject"
+      if !dest_cal.nil? && (response == "Accept" || response == "Reject")
         if response == "Accept"
           updated = invt.update_attribute(:response, "accepted")
         else
@@ -293,7 +293,7 @@ class BearPlannerController < ApplicationController
           redirect_to :action=>'show_invites'
         end
       else
-        redirect_to :action=>'show_invite', :notice=>'An error has occurred.'
+        redirect_to :action=>'show_invite', :notice=>'An error has occurred.', :invite_id=>iid
       end
     end
   end

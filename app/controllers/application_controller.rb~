@@ -5,8 +5,12 @@ class ApplicationController < ActionController::Base
     uid = session[:uid]
     iid = params[:invite_id]
     invt = Invite.find_by_id(iid)
-    guest_id = invt.user.id
-    if users.include?(uid)
+    if !invt.nil?
+      guest_id = invt.user.id
+    else
+      return true
+    end
+    if uid == guest_id
       return true
     else
       redirect_to :action=>'show_invites', :notice=>'You can not access that invite.'
